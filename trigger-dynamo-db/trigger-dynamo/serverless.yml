@@ -1,0 +1,66 @@
+service: trigger-dynamo
+frameworkVersion: '2'
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  lambdaHashingVersion: 20201221
+  environment:
+    DYNAMODB_TABLE: users
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:GetItem
+        - dynamodb:UpdateItem
+        - dynamodb:PutItem
+        - dynamodb:ListStreams
+        - dynamodb:DescribeStream
+      Resource: "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_TABLE}"
+
+resources:
+  Resources:
+    UsersTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.DYNAMODB_TABLE}
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+          - AttributeName: name
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+          - AttributeName: name
+            KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        StreamSpecification:
+          StreamViewType: NEW_AND_OLD_IMAGES
+        
+functions:
+  # funcao http para criar
+  user-create:
+    handler: handler.userCreate
+
+    events:
+      - httpApi:
+          path: /users
+          method: post
+  user-get:
+    handler: handler.getUser
+    events:
+      - httpApi:
+          path: /users
+          method: get
+  # funcao de trigger para cada cara add
+  user-trigger:
+    handler: handler.userTrigger
+    events:
+      - stream:
+        type: dynamodb
+        arn:
+          Fn::GetAtt:
+            - UsersTable
+            - StreamArn
